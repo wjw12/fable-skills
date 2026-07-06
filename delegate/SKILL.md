@@ -26,7 +26,7 @@ Defaults, not law — route with your own judgment; escalate a tier when output 
 
 CLI executors are preferred for token-heavy autonomous work (their tokens are off Fable's bill entirely); native subagents when the work should respect this session's permission mode or hand back structured output.
 
-Codex `gpt-5.5` high and Cursor `gpt-5.5-high` are the same model tier — either substitutes for the other when one lane is unavailable (verified: Cursor's lane landed a production race-condition fix first-try, July 2026).
+Codex `gpt-5.5` high and Cursor `gpt-5.5-high` are the same model tier — either substitutes for the other when one lane is unavailable.
 
 ## Execution modes and authorization
 
@@ -60,17 +60,36 @@ The `-o` file contains only the final message — no JSON parsing, no truncation
 
 ### Cursor (`agent`)
 
-No `-o` flag — redirect stdout, or tell the agent to write its result file itself (see `strategy-workspace/experiments/x-reply-spike/step1-collect.sh`):
+Cursor has no `-o` flag, so capture results one of two ways: redirect stdout to a file, or — more robustly — tell the agent in the prompt to write its own result file. A standalone wrapper for the latter, parameterized so you can drop it in and adapt the prompt:
 
 ```bash
+#!/usr/bin/env bash
+# Delegate one task to Cursor `agent`; the agent writes its own result file.
+set -euo pipefail
+
+REPO="${REPO:-$PWD}"
+OUT="${OUT:-$REPO/out/result.md}"
+MODEL="${MODEL:-composer-2.5-fast}"
+mkdir -p "$(dirname "$OUT")"
+
+# Quoted heredoc so backticks / $() inside the prompt aren't expanded by the
+# shell; inject only the output path afterwards via a placeholder.
 PROMPT=$(cat <<'EOF'
-[CONTEXT] [OBJECTIVES]
-Write your output to: /path/to/out/result.md
+[CONTEXT]     what you're working on and why
+[OBJECTIVES]  the one thing to produce
+[CONSTRAINTS] follow existing patterns; do NOT commit; leave changes in the working tree
+[OUTPUT]      Write your result to: __OUT__  (state the exact structure the reader expects)
+[DONE WHEN]   success criteria
+
+Do not push, deploy, or post anything. Only write the file.
 EOF
 )
+PROMPT=${PROMPT//__OUT__/$OUT}
+
+echo "[delegate] model=$MODEL -> $OUT"
 agent -p --force --trust --output-format text \
-  --model composer-2.5-fast --workspace /path/to/repo \
-  "$PROMPT" > "$SCRATCH/cursor-task1.log" 2>&1
+  --model "$MODEL" --workspace "$REPO" "$PROMPT"
+echo "[delegate] done -> $OUT"
 ```
 
 `-p --force --trust` = headless with full write+shell access — scope the prompt accordingly. `--mode plan`/`--mode ask` for read-only passes; `-w <name>` gives an isolated git worktree when parallel agents would collide on files.
