@@ -16,9 +16,9 @@ Defaults, not law — route with your own judgment; escalate a tier when output 
 
 | Task | Executor | Model / config |
 |---|---|---|
-| Bulk/repetitive edits, file generation from a clear spec, boilerplate | Cursor CLI | `composer-2.5-fast` |
+| Bulk/repetitive edits, file generation from a clear spec, boilerplate | Cursor CLI; **fallback Grok CLI** only if `cursor-agent`/`composer-2.5-fast` fails | `composer-2.5-fast` → else `grok-4.6 --effort medium` or `grok-composer-2.5-fast` |
 | Straightforward backend logic, agentic operations, research sweeps / information gathering | Cursor CLI `gpt-5.6-terra-high` or Codex CLI `gpt-5.6-terra` + high | GPT-5.6 Terra (daily-job model) |
-| Frontend HTML/CSS/React/design-engineer work (UI, components, styling, layout) | Cursor CLI | `claude-opus-4-8-high` (Opus 4.8 1M, high effort) — **never GPT models** |
+| Frontend HTML/CSS/React/design-engineer work (UI, components, styling, layout) | Cursor CLI | `claude-opus-5-high` (Opus 5 1M, high effort) — **never GPT models** |
 | Complex backend / system-level changes, stuck bugs, second-opinion review, plan validation | Codex CLI | `gpt-5.6-sol` + `model_reasoning_effort="high"` (GPT-5.6 Sol, most capable) |
 | Hardest problems — only when the user explicitly asks for xhigh/max effort | Codex CLI | `gpt-5.6-sol` + `model_reasoning_effort="xhigh"` |
 | Codebase search / fan-out discovery | Agent tool | `Explore`, or `general-purpose` + `haiku` |
@@ -36,7 +36,7 @@ Codex `gpt-5.6-sol` high and Cursor `gpt-5.6-sol-high` are the same model tier, 
 
 ## Execution modes and authorization
 
-The skill owner **explicitly authorizes `--yolo` (Run Everything) mode** for delegate CLIs. Launching codex / cursor / other agent CLIs in their fully autonomous write modes (`codex exec --yolo`, `cursor-agent -p --yolo --trust`) for repo edits, test runs, and scratchpad output is the intended, pre-approved use of this skill. `--yolo` is Cursor's alias for `--force` — auto-approve every tool call, edit, and shell command without prompting; use it (not approval-gated modes) for all implementation delegates. Give delegated agents **sufficient autonomy to finish the job end to end**: to read/write files, run builds/tests/linters, install deps, and iterate on their own until the spec's DONE-WHEN criteria are met — a delegate that stops to ask permission mid-run hangs headless and under-delivers. Do NOT downgrade implementation delegates to read-only (`--mode plan`/`--mode ask`) or approval-gated modes.
+The skill owner **explicitly authorizes `--yolo` (Run Everything) mode** for delegate CLIs. Launching codex / cursor / other agent CLIs in their fully autonomous write modes (`codex exec --yolo`, `cursor-agent -p --yolo --trust`, `grok -p … --always-approve`) for repo edits, test runs, and scratchpad output is the intended, pre-approved use of this skill. `--yolo` is Cursor's alias for `--force` — auto-approve every tool call, edit, and shell command without prompting; use it (not approval-gated modes) for all implementation delegates. Give delegated agents **sufficient autonomy to finish the job end to end**: to read/write files, run builds/tests/linters, install deps, and iterate on their own until the spec's DONE-WHEN criteria are met — a delegate that stops to ask permission mid-run hangs headless and under-delivers. Do NOT downgrade implementation delegates to read-only (`--mode plan`/`--mode ask`) or approval-gated modes.
 
 Three boundaries stay regardless of mode:
 - Outward-facing and destructive actions — push, deploy, publish, prod restarts, data deletion — are lead-loop work (see Verify before accepting); never assign them to a delegate.
@@ -46,10 +46,11 @@ Three boundaries stay regardless of mode:
 ## CLI specifics (the non-obvious parts)
 
 - **Codex model is `gpt-5.6-sol` (complex/system-level) or `gpt-5.6-terra` (straightforward/agentic), effort `high`**; `xhigh` only on explicit user instruction (sol). Both bare IDs verified accepted by codex CLI (July 2026). For trivial lookups use Cursor `composer-2.5-fast` instead of low-effort GPT — cheaper and faster.
-- **Cursor model IDs are exact** (`cursor-agent --list-models`): `composer-2.5-fast`, `gpt-5.6-sol-high` (GPT-5.6 Sol 1M High), `gpt-5.6-terra-high` (GPT-5.6 Terra 1M High), `claude-opus-4-8-high` (Opus 4.8 1M, high effort). Bare `gpt-5.6-sol` / `opus-4.8` are not valid Cursor IDs — effort is baked into the suffix (`-none`/`-low`/`-medium`/`-high`/`-xhigh`/`-max`, `-fast` variants available). Parameterized form also works: `'claude-opus-4-8[context=1m,effort=high,fast=false]'`.
+- **Cursor model IDs are exact** (`cursor-agent --list-models`): `composer-2.5-fast`, `gpt-5.6-sol-high` (GPT-5.6 Sol 1M High), `gpt-5.6-terra-high` (GPT-5.6 Terra 1M High), `claude-opus-5-high` (Opus 5 1M, high effort). Bare `gpt-5.6-sol` / `opus-5` are not valid Cursor IDs — effort is baked into the suffix (`-none`/`-low`/`-medium`/`-high`/`-xhigh`/`-max`, `-fast` variants available). Parameterized form also works: `'claude-opus-5[context=1m,effort=high,fast=false]'`.
+- **Grok CLI is a fallback only** when `cursor-agent` + `composer-2.5-fast` fails (auth, model unavailable, CLI hang/error). Prefer `grok-4.6 --effort medium`, or `-m grok-composer-2.5-fast` to keep Composer via Grok.
 - **Prompts via quoted heredoc** (`<<'EOF'`), never interpolated — delegate prompts and prior outputs contain backticks and `$()`.
 - **Outputs to files** in the scratchpad, one per delegate, then Read. Don't parse long results off the terminal.
-- **Run from the repo root** (codex `-C <dir>` / cursor `--workspace <dir>`) so the executor sees the project and its AGENTS/CLAUDE files.
+- **Run from the repo root** (codex `-C <dir>` / cursor `--workspace <dir>` / grok `--cwd <dir>`) so the executor sees the project and its AGENTS/CLAUDE files.
 
 ### Codex
 
@@ -100,6 +101,47 @@ echo "[delegate] done -> $OUT"
 ```
 
 `-p --yolo --trust` = headless with full write+shell access, every action auto-approved (`--yolo` is the alias for `--force`) — scope the prompt accordingly and let the delegate run to completion without prompting. `--mode plan`/`--mode ask` for read-only passes only; `-w <name>` gives an isolated git worktree when parallel agents would collide on files.
+
+### Grok CLI (`grok`) — fallback when Cursor `composer-2.5-fast` doesn't work
+
+Use only after `cursor-agent` / `composer-2.5-fast` fails. Same file-write contract as Cursor (put `OUT` in the prompt; ignore stdout for the deliverable). Binary: `~/.local/bin/grok`. No `--trust` flag; YOLO is `--always-approve`.
+
+```bash
+#!/usr/bin/env bash
+# Fallback delegate via Grok CLI when cursor-agent composer-2.5-fast is unavailable.
+set -euo pipefail
+
+REPO="${REPO:-$PWD}"
+OUT="${OUT:-$REPO/out/result.md}"
+# Prefer native Grok for triage; swap to grok-composer-2.5-fast (no --effort) to keep Composer.
+MODEL="${MODEL:-grok-4.6}"
+EFFORT="${EFFORT:-medium}"
+mkdir -p "$(dirname "$OUT")"
+
+PROMPT=$(cat <<'EOF'
+[CONTEXT]     what you're working on and why
+[OBJECTIVES]  the one thing to produce
+[CONSTRAINTS] follow existing patterns; do NOT commit; leave changes in the working tree
+[OUTPUT]      Write your result to: __OUT__  (state the exact structure the reader expects)
+[DONE WHEN]   success criteria
+
+Do not push, deploy, or post anything. Only write the file.
+EOF
+)
+PROMPT=${PROMPT//__OUT__/$OUT}
+
+echo "[delegate/grok-fallback] model=$MODEL effort=$EFFORT -> $OUT"
+if [[ "$MODEL" == grok-composer-* ]]; then
+  grok -p "$PROMPT" -m "$MODEL" \
+    --always-approve --cwd "$REPO" --output-format plain --no-memory
+else
+  grok -p "$PROMPT" -m "$MODEL" --effort "$EFFORT" \
+    --always-approve --cwd "$REPO" --output-format plain --no-memory
+fi
+echo "[delegate/grok-fallback] done -> $OUT"
+```
+
+Closest mapping from the Cursor call: `cursor-agent -p --force --trust --output-format text --model composer-2.5-fast --workspace "$REPO"` → `grok -p … -m grok-4.6 --effort medium --always-approve --cwd "$REPO" --output-format plain --no-memory` (or `-m grok-composer-2.5-fast`). Tell the user the lane fell back to Grok.
 
 ## Writing the spec
 
