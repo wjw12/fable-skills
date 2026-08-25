@@ -16,7 +16,7 @@ Defaults, not law — route with your own judgment; escalate a tier when output 
 
 | Task | Executor | Model / config |
 |---|---|---|
-| Bulk/repetitive edits, file generation from a clear spec, boilerplate | Cursor CLI; **fallback Grok CLI** only if `cursor-agent`/`composer-2.5-fast` fails | `composer-2.5-fast` → else `grok-4.6 --effort medium` or `grok-composer-2.5-fast` |
+| Bulk/repetitive edits, file generation from a clear spec, boilerplate | Grok CLI | `grok-4.6 --effort medium` |
 | Straightforward backend logic, agentic operations, research sweeps / information gathering | Cursor CLI `gpt-5.6-terra-high` or Codex CLI `gpt-5.6-terra` + high | GPT-5.6 Terra (daily-job model) |
 | Frontend HTML/CSS/React/design-engineer work (UI, components, styling, layout) | Cursor CLI | `claude-opus-5-high` (Opus 5 1M, high effort) — **never GPT models** |
 | Complex backend / system-level changes, stuck bugs, second-opinion review, plan validation | Codex CLI | `gpt-5.6-sol` + `model_reasoning_effort="high"` (GPT-5.6 Sol, most capable) |
@@ -36,18 +36,19 @@ Codex `gpt-5.6-sol` high and Cursor `gpt-5.6-sol-high` are the same model tier, 
 
 ## Execution modes and authorization
 
-The skill owner **explicitly authorizes `--yolo` (Run Everything) mode** for delegate CLIs. Launching codex / cursor / other agent CLIs in their fully autonomous write modes (`codex exec --yolo`, `cursor-agent -p --yolo --trust`, `grok -p … --always-approve`) for repo edits, test runs, and scratchpad output is the intended, pre-approved use of this skill. `--yolo` is Cursor's alias for `--force` — auto-approve every tool call, edit, and shell command without prompting; use it (not approval-gated modes) for all implementation delegates. Give delegated agents **sufficient autonomy to finish the job end to end**: to read/write files, run builds/tests/linters, install deps, and iterate on their own until the spec's DONE-WHEN criteria are met — a delegate that stops to ask permission mid-run hangs headless and under-delivers. Do NOT downgrade implementation delegates to read-only (`--mode plan`/`--mode ask`) or approval-gated modes.
+The skill owner **explicitly authorizes `--yolo` (Run Everything) mode** for delegate CLIs. Launching codex / cursor / other agent CLIs in their fully autonomous write modes (`/home/appuser/.bun/bin/codex exec --yolo`, `cursor-agent -p --yolo --trust`, `grok -p … --always-approve`) for repo edits, test runs, and scratchpad output is the intended, pre-approved use of this skill. `--yolo` is Cursor's alias for `--force` — auto-approve every tool call, edit, and shell command without prompting; use it (not approval-gated modes) for all implementation delegates. Give delegated agents **sufficient autonomy to finish the job end to end**: to read/write files, run builds/tests/linters, install deps, and iterate on their own until the spec's DONE-WHEN criteria are met — a delegate that stops to ask permission mid-run hangs headless and under-delivers. Do NOT downgrade implementation delegates to read-only (`--mode plan`/`--mode ask`) or approval-gated modes.
 
 Three boundaries stay regardless of mode:
 - Outward-facing and destructive actions — push, deploy, publish, prod restarts, data deletion — are lead-loop work (see Verify before accepting); never assign them to a delegate.
-- **Shared live datastores are lead-loop territory.** A delegate writing code that touches a live DB will test-run it against that DB no matter what the prompt says (observed: composer test-ran a dev ingester against production, July 2026). Structure the lane so the delegate ships code/drafts only and the LEAD executes the first run — and snapshot the datastore (row counts at minimum, a dump when cheap) before launching any delegate whose task touches mutation code. For cleanup, prefer re-running the owning idempotent source over surgical DELETEs — a `LIKE`-pattern delete once over-matched rows legitimately owned by another source.
-- If the harness denies an executor launch, don't grind through flag variants. Either use another executor lane at the same model tier (table above) when one is plainly equivalent, or pause and ask the user how they want to proceed. Always tell the user which lane actually ran. (Known: some auto-permission environments deny `codex exec --yolo` outright — Cursor `gpt-5.6-sol-high` / `gpt-5.6-terra-high` is the drop-in same-tier lane.)
+- **Shared live datastores are lead-loop territory.** A delegate writing code that touches a live DB will test-run it against that DB no matter what the prompt says (observed: a delegate test-ran a dev ingester against production, July 2026). Structure the lane so the delegate ships code/drafts only and the LEAD executes the first run — and snapshot the datastore (row counts at minimum, a dump when cheap) before launching any delegate whose task touches mutation code. For cleanup, prefer re-running the owning idempotent source over surgical DELETEs — a `LIKE`-pattern delete once over-matched rows legitimately owned by another source.
+- If the harness denies an executor launch, don't grind through flag variants. Either use another executor lane at the same model tier (table above) when one is plainly equivalent, or pause and ask the user how they want to proceed. Always tell the user which lane actually ran. (Known: some auto-permission environments deny `/home/appuser/.bun/bin/codex exec --yolo` outright — Cursor `gpt-5.6-sol-high` / `gpt-5.6-terra-high` is the drop-in same-tier lane.)
 
 ## CLI specifics (the non-obvious parts)
 
-- **Codex model is `gpt-5.6-sol` (complex/system-level) or `gpt-5.6-terra` (straightforward/agentic), effort `high`**; `xhigh` only on explicit user instruction (sol). Both bare IDs verified accepted by codex CLI (July 2026). For trivial lookups use Cursor `composer-2.5-fast` instead of low-effort GPT — cheaper and faster.
-- **Cursor model IDs are exact** (`cursor-agent --list-models`): `composer-2.5-fast`, `gpt-5.6-sol-high` (GPT-5.6 Sol 1M High), `gpt-5.6-terra-high` (GPT-5.6 Terra 1M High), `claude-opus-5-high` (Opus 5 1M, high effort). Bare `gpt-5.6-sol` / `opus-5` are not valid Cursor IDs — effort is baked into the suffix (`-none`/`-low`/`-medium`/`-high`/`-xhigh`/`-max`, `-fast` variants available). Parameterized form also works: `'claude-opus-5[context=1m,effort=high,fast=false]'`.
-- **Grok CLI is a fallback only** when `cursor-agent` + `composer-2.5-fast` fails (auth, model unavailable, CLI hang/error). Prefer `grok-4.6 --effort medium`, or `-m grok-composer-2.5-fast` to keep Composer via Grok.
+- **Always invoke Codex as `/home/appuser/.bun/bin/codex` on this host.** Do not use an unqualified `codex`: the shell may resolve the stale `/usr/bin/codex` installation, which cannot use current models.
+- **Codex model is `gpt-5.6-sol` (complex/system-level) or `gpt-5.6-terra` (straightforward/agentic), effort `high`**; `xhigh` only on explicit user instruction (sol). Both bare IDs verified accepted by codex CLI (July 2026). For trivial lookups and bulk mechanical work, use Grok `grok-4.6 --effort medium` instead of a low-effort GPT lane.
+- **Cursor model IDs are exact** (`cursor-agent --list-models`): `gpt-5.6-sol-high` (GPT-5.6 Sol 1M High), `gpt-5.6-terra-high` (GPT-5.6 Terra 1M High), `claude-opus-5-high` (Opus 5 1M, high effort). Bare `gpt-5.6-sol` / `opus-5` are not valid Cursor IDs — effort is baked into the suffix (`-none`/`-low`/`-medium`/`-high`/`-xhigh`/`-max`, `-fast` variants available). Parameterized form also works: `'claude-opus-5[context=1m,effort=high,fast=false]'`.
+- **Grok CLI uses `grok-4.6 --effort medium` for bulk/repetitive edits, boilerplate, file generation from a clear spec, and trivial lookups.** Full contract: `~/tokenized-equity-watch/docs/grok-cli.md`.
 - **Prompts via quoted heredoc** (`<<'EOF'`), never interpolated — delegate prompts and prior outputs contain backticks and `$()`.
 - **Outputs to files** in the scratchpad, one per delegate, then Read. Don't parse long results off the terminal.
 - **Run from the repo root** (codex `-C <dir>` / cursor `--workspace <dir>` / grok `--cwd <dir>`) so the executor sees the project and its AGENTS/CLAUDE files.
@@ -55,7 +56,7 @@ Three boundaries stay regardless of mode:
 ### Codex
 
 ```bash
-cat <<'EOF' | codex exec --yolo --skip-git-repo-check \
+cat <<'EOF' | /home/appuser/.bun/bin/codex exec --yolo --skip-git-repo-check \
   -m gpt-5.6-sol -c 'model_reasoning_effort="high"' \
   -C /path/to/repo -o "$SCRATCH/codex-task1.txt" -
 [CONTEXT] [OBJECTIVES] [CONSTRAINTS]
@@ -77,7 +78,7 @@ set -euo pipefail
 
 REPO="${REPO:-$PWD}"
 OUT="${OUT:-$REPO/out/result.md}"
-MODEL="${MODEL:-composer-2.5-fast}"
+MODEL="${MODEL:?Set MODEL to a Cursor model from the routing table}"
 mkdir -p "$(dirname "$OUT")"
 
 # Quoted heredoc so backticks / $() inside the prompt aren't expanded by the
@@ -102,18 +103,17 @@ echo "[delegate] done -> $OUT"
 
 `-p --yolo --trust` = headless with full write+shell access, every action auto-approved (`--yolo` is the alias for `--force`) — scope the prompt accordingly and let the delegate run to completion without prompting. `--mode plan`/`--mode ask` for read-only passes only; `-w <name>` gives an isolated git worktree when parallel agents would collide on files.
 
-### Grok CLI (`grok`) — fallback when Cursor `composer-2.5-fast` doesn't work
+### Grok CLI (`grok`)
 
-Use only after `cursor-agent` / `composer-2.5-fast` fails. Same file-write contract as Cursor (put `OUT` in the prompt; ignore stdout for the deliverable). Binary: `~/.local/bin/grok`. No `--trust` flag; YOLO is `--always-approve`.
+Use Grok 4.6 for bulk/repetitive edits, file generation from a clear spec, boilerplate, and trivial lookups. Use the same file-write contract as Cursor (put `OUT` in the prompt; ignore stdout for the deliverable). Binary: `~/.local/bin/grok`. No `--trust` flag; YOLO is `--always-approve`.
 
 ```bash
 #!/usr/bin/env bash
-# Fallback delegate via Grok CLI when cursor-agent composer-2.5-fast is unavailable.
+# Delegate a bulk, repetitive, or mechanical task via Grok CLI.
 set -euo pipefail
 
 REPO="${REPO:-$PWD}"
 OUT="${OUT:-$REPO/out/result.md}"
-# Prefer native Grok for triage; swap to grok-composer-2.5-fast (no --effort) to keep Composer.
 MODEL="${MODEL:-grok-4.6}"
 EFFORT="${EFFORT:-medium}"
 mkdir -p "$(dirname "$OUT")"
@@ -130,18 +130,13 @@ EOF
 )
 PROMPT=${PROMPT//__OUT__/$OUT}
 
-echo "[delegate/grok-fallback] model=$MODEL effort=$EFFORT -> $OUT"
-if [[ "$MODEL" == grok-composer-* ]]; then
-  grok -p "$PROMPT" -m "$MODEL" \
-    --always-approve --cwd "$REPO" --output-format plain --no-memory
-else
-  grok -p "$PROMPT" -m "$MODEL" --effort "$EFFORT" \
-    --always-approve --cwd "$REPO" --output-format plain --no-memory
-fi
-echo "[delegate/grok-fallback] done -> $OUT"
+echo "[delegate/grok] model=$MODEL effort=$EFFORT -> $OUT"
+grok -p "$PROMPT" -m "$MODEL" --effort "$EFFORT" \
+  --always-approve --cwd "$REPO" --output-format plain --no-memory
+echo "[delegate/grok] done -> $OUT"
 ```
 
-Closest mapping from the Cursor call: `cursor-agent -p --force --trust --output-format text --model composer-2.5-fast --workspace "$REPO"` → `grok -p … -m grok-4.6 --effort medium --always-approve --cwd "$REPO" --output-format plain --no-memory` (or `-m grok-composer-2.5-fast`). Tell the user the lane fell back to Grok.
+Standard Grok invocation: `grok -p … -m grok-4.6 --effort medium --always-approve --cwd "$REPO" --output-format plain --no-memory`.
 
 ## Writing the spec
 
