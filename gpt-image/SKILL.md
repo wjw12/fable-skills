@@ -95,7 +95,3 @@ Look at every output yourself (Read the PNG) before showing it:
 - No extra objects, text, borders or drawn checkerboards.
 - Inserted objects are the right size, touch the ground, and their light matches the scene.
 - Transparency is real if asked for (the file mode is RGBA and the background alpha is 0).
-
-To show the human, give file paths. For a before and after, paste both side by side into one PNG with Pillow.
-
-Things the model cannot do reliably: exact pixel positions, grid-aligned layouts, exact colour values, long text, logos. Do those with code after generation.
