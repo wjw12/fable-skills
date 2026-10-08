@@ -16,39 +16,39 @@ Defaults, not law — route with your own judgment; escalate a tier when output 
 
 | Task | Executor | Model / config |
 |---|---|---|
-| Bulk/repetitive edits, file generation from a clear spec, boilerplate | Grok CLI | `grok-4.6 --effort medium` |
-| Straightforward backend logic, agentic operations, research sweeps / information gathering | Cursor CLI `gpt-5.6-terra-high` or Codex CLI `gpt-5.6-terra` + high | GPT-5.6 Terra (daily-job model) |
-| Frontend HTML/CSS/React/design-engineer work (UI, components, styling, layout) | Cursor CLI | `claude-opus-5-high` (Opus 5 1M, high effort) — **never GPT models** |
-| Complex backend / system-level changes, stuck bugs, second-opinion review, plan validation | Codex CLI | `gpt-5.6-sol` + `model_reasoning_effort="high"` (GPT-5.6 Sol, most capable) |
-| Hardest problems — only when the user explicitly asks for xhigh/max effort | Codex CLI | `gpt-5.6-sol` + `model_reasoning_effort="xhigh"` |
-| Codebase search / fan-out discovery | Agent tool | `Explore`, or `general-purpose` + `haiku` |
-| Work needing harness integration (permission modes, structured output, session conventions) | Agent tool | `general-purpose` + `sonnet` (or `opus` for judgment-heavy passes) |
+| Bulk/repetitive edits, file generation from a clear spec, boilerplate | Grok CLI | `grok-4.7 --effort medium` |
+| Backend logic, agentic operations, research sweeps, system-level changes, stuck bugs, second-opinion review, plan validation | Codex CLI | `gpt-6.1-sol` + `model_reasoning_effort="high"` |
+| Frontend HTML/CSS/React/design-engineer work (UI, components, styling, layout) | Cursor CLI | `claude-opus-5-5-high` (Opus 5.5 1M, high effort) — **never GPT models** |
+| Hardest problems — only when the user explicitly asks for xhigh effort | Codex CLI | `gpt-6.1-sol` + `model_reasoning_effort="xhigh"` |
+| Codebase search / fan-out discovery | Agent tool | `Explore`, or `general-purpose` + `haiku` (Haiku 4.5) |
+| Work needing harness integration (permission modes, structured output, session conventions) | Agent tool | `general-purpose` + `sonnet` (Sonnet 5.5), or `opus` (Opus 5.5) for judgment-heavy passes |
 | Architecture, API design, root-cause calls, synthesis, final review | **Fable itself** | — |
 
 CLI executors are preferred for token-heavy autonomous work (their tokens are off Fable's bill entirely); native subagents when the work should respect this session's permission mode or hand back structured output.
 
-Codex `gpt-5.6-sol` high and Cursor `gpt-5.6-sol-high` are the same model tier, as are Codex `gpt-5.6-terra` high and Cursor `gpt-5.6-terra-high` — either lane substitutes for the other when one is unavailable (precedent: the equivalent GPT-5.5 Cursor lane landed a production race-condition fix first-try, July 2026).
+The only GPT model in this skill is Codex `gpt-6.1-sol` (verified on codex-cli 0.159.2 with a ChatGPT login, 30 Sep 2026). Do not send GPT work to `cursor-agent`. Cursor is the Opus frontend lane only.
 
 **GPT scope limits (hard rules):**
 - **No GPT models for frontend UI/UX** (components, styling, layout, design). Frontend *API-layer* work is fine — e.g. Next.js route handlers/server code.
 - **No GPT models for human-facing docs or publication writing.** Internal technical docs and research artifacts for internal use are fine.
-- Route both categories to the Opus/Claude lanes instead.
+- **No `cursor-agent --model gpt-*`.** If a task needs a GPT model, run Codex `gpt-6.1-sol`. If it needs Cursor, the model is `claude-opus-5-5-high`.
+- Route frontend and publication writing to the Opus/Claude lanes instead.
 
 ## Execution modes and authorization
 
-The skill owner **explicitly authorizes `--yolo` (Run Everything) mode** for delegate CLIs. Launching codex / cursor / other agent CLIs in their fully autonomous write modes (`/home/appuser/.bun/bin/codex exec --yolo`, `cursor-agent -p --yolo --trust`, `grok -p … --always-approve`) for repo edits, test runs, and scratchpad output is the intended, pre-approved use of this skill. `--yolo` is Cursor's alias for `--force` — auto-approve every tool call, edit, and shell command without prompting; use it (not approval-gated modes) for all implementation delegates. Give delegated agents **sufficient autonomy to finish the job end to end**: to read/write files, run builds/tests/linters, install deps, and iterate on their own until the spec's DONE-WHEN criteria are met — a delegate that stops to ask permission mid-run hangs headless and under-delivers. Do NOT downgrade implementation delegates to read-only (`--mode plan`/`--mode ask`) or approval-gated modes.
+The skill owner **explicitly authorizes fully autonomous write mode** for delegate CLIs. Launching codex / cursor / other agent CLIs in their write modes (`~/.local/bin/codex exec --dangerously-bypass-approvals-and-sandbox`, `cursor-agent -p --yolo --trust`, `grok -p … --always-approve`) for repo edits, test runs, and scratchpad output is the intended, pre-approved use of this skill. Codex 0.159.2 has no `--yolo` flag; that name is Cursor's alias for `--force`. Auto-approve every tool call, edit, and shell command without prompting; use it (not approval-gated modes) for all implementation delegates. Give delegated agents **sufficient autonomy to finish the job end to end**: to read/write files, run builds/tests/linters, install deps, and iterate on their own until the spec's DONE-WHEN criteria are met — a delegate that stops to ask permission mid-run hangs headless and under-delivers. Do NOT downgrade implementation delegates to read-only (`--mode plan`/`--mode ask`) or approval-gated modes.
 
 Three boundaries stay regardless of mode:
 - Outward-facing and destructive actions — push, deploy, publish, prod restarts, data deletion — are lead-loop work (see Verify before accepting); never assign them to a delegate.
 - **Shared live datastores are lead-loop territory.** A delegate writing code that touches a live DB will test-run it against that DB no matter what the prompt says (observed: a delegate test-ran a dev ingester against production, July 2026). Structure the lane so the delegate ships code/drafts only and the LEAD executes the first run — and snapshot the datastore (row counts at minimum, a dump when cheap) before launching any delegate whose task touches mutation code. For cleanup, prefer re-running the owning idempotent source over surgical DELETEs — a `LIKE`-pattern delete once over-matched rows legitimately owned by another source.
-- If the harness denies an executor launch, don't grind through flag variants. Either use another executor lane at the same model tier (table above) when one is plainly equivalent, or pause and ask the user how they want to proceed. Always tell the user which lane actually ran. (Known: some auto-permission environments deny `/home/appuser/.bun/bin/codex exec --yolo` outright — Cursor `gpt-5.6-sol-high` / `gpt-5.6-terra-high` is the drop-in same-tier lane.)
+- If the harness denies an executor launch, don't grind through flag variants. Use another executor from the table only when it is the lane for that task (Grok for mechanical work, Cursor Opus for frontend). Do not fall back to `cursor-agent` with a GPT model. Otherwise pause and ask the user how they want to proceed. Always tell the user which lane actually ran.
 
 ## CLI specifics (the non-obvious parts)
 
-- **Always invoke Codex as `/home/appuser/.bun/bin/codex` on this host.** Do not use an unqualified `codex`: the shell may resolve the stale `/usr/bin/codex` installation, which cannot use current models.
-- **Codex model is `gpt-5.6-sol` (complex/system-level) or `gpt-5.6-terra` (straightforward/agentic), effort `high`**; `xhigh` only on explicit user instruction (sol). Both bare IDs verified accepted by codex CLI (July 2026). For trivial lookups and bulk mechanical work, use Grok `grok-4.6 --effort medium` instead of a low-effort GPT lane.
-- **Cursor model IDs are exact** (`cursor-agent --list-models`): `gpt-5.6-sol-high` (GPT-5.6 Sol 1M High), `gpt-5.6-terra-high` (GPT-5.6 Terra 1M High), `claude-opus-5-high` (Opus 5 1M, high effort). Bare `gpt-5.6-sol` / `opus-5` are not valid Cursor IDs — effort is baked into the suffix (`-none`/`-low`/`-medium`/`-high`/`-xhigh`/`-max`, `-fast` variants available). Parameterized form also works: `'claude-opus-5[context=1m,effort=high,fast=false]'`.
-- **Grok CLI uses `grok-4.6 --effort medium` for bulk/repetitive edits, boilerplate, file generation from a clear spec, and trivial lookups.** Full contract: `~/tokenized-equity-watch/docs/grok-cli.md`.
+- **Invoke Codex as `~/.local/bin/codex`.** That symlink tracks the current standalone install. Do not use an unqualified `codex` when a stale binary is earlier on `PATH`. `gpt-6.1-sol` needs codex-cli 0.159.2 or newer; 0.158 returns `400 The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account.` Fix with `codex update`.
+- **Codex model is `gpt-6.1-sol`, effort `high`.** `xhigh` only when the user explicitly asks for it. For trivial lookups and bulk mechanical work, use Grok `grok-4.7 --effort medium` instead of a low-effort GPT lane.
+- **Do not pass GPT model IDs to `cursor-agent`.** The only Cursor model in this skill is `claude-opus-5-5-high` (Opus 5.5 1M, high effort). Bare `opus-5-5` is not a valid Cursor ID — effort is baked into the suffix. Parameterized form also works: `'claude-opus-5-5[context=1m,effort=high,fast=false]'`.
+- **Grok CLI uses `grok-4.7 --effort medium` for bulk/repetitive edits, boilerplate, file generation from a clear spec, and trivial lookups.** Full contract: `~/tokenized-equity-watch/docs/grok-cli.md`.
 - **Prompts via quoted heredoc** (`<<'EOF'`), never interpolated — delegate prompts and prior outputs contain backticks and `$()`.
 - **Outputs to files** in the scratchpad, one per delegate, then Read. Don't parse long results off the terminal.
 - **Run from the repo root** (codex `-C <dir>` / cursor `--workspace <dir>` / grok `--cwd <dir>`) so the executor sees the project and its AGENTS/CLAUDE files.
@@ -56,8 +56,8 @@ Three boundaries stay regardless of mode:
 ### Codex
 
 ```bash
-cat <<'EOF' | /home/appuser/.bun/bin/codex exec --yolo --skip-git-repo-check \
-  -m gpt-5.6-sol -c 'model_reasoning_effort="high"' \
+cat <<'EOF' | ~/.local/bin/codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check \
+  -m gpt-6.1-sol -c 'model_reasoning_effort="high"' \
   -C /path/to/repo -o "$SCRATCH/codex-task1.txt" -
 [CONTEXT] [OBJECTIVES] [CONSTRAINTS]
 [OUTPUT] exact shape of the final message (machine-read, not chat)
@@ -78,7 +78,7 @@ set -euo pipefail
 
 REPO="${REPO:-$PWD}"
 OUT="${OUT:-$REPO/out/result.md}"
-MODEL="${MODEL:?Set MODEL to a Cursor model from the routing table}"
+MODEL="${MODEL:-claude-opus-5-5-high}"
 mkdir -p "$(dirname "$OUT")"
 
 # Quoted heredoc so backticks / $() inside the prompt aren't expanded by the
@@ -101,11 +101,11 @@ cursor-agent -p --yolo --trust --output-format text \
 echo "[delegate] done -> $OUT"
 ```
 
-`-p --yolo --trust` = headless with full write+shell access, every action auto-approved (`--yolo` is the alias for `--force`) — scope the prompt accordingly and let the delegate run to completion without prompting. `--mode plan`/`--mode ask` for read-only passes only; `-w <name>` gives an isolated git worktree when parallel agents would collide on files.
+`-p --yolo --trust` = headless with full write+shell access, every action auto-approved (`--yolo` is the alias for `--force`) — scope the prompt accordingly and let the delegate run to completion without prompting. `--model` must be `claude-opus-5-5-high` (or another non-GPT Cursor ID the user named). Do not pass `gpt-*`. `--mode plan`/`--mode ask` for read-only passes only; `-w <name>` gives an isolated git worktree when parallel agents would collide on files.
 
 ### Grok CLI (`grok`)
 
-Use Grok 4.6 for bulk/repetitive edits, file generation from a clear spec, boilerplate, and trivial lookups. Use the same file-write contract as Cursor (put `OUT` in the prompt; ignore stdout for the deliverable). Binary: `~/.local/bin/grok`. No `--trust` flag; YOLO is `--always-approve`.
+Use Grok 4.7 for bulk/repetitive edits, file generation from a clear spec, boilerplate, and trivial lookups. Use the same file-write contract as Cursor (put `OUT` in the prompt; ignore stdout for the deliverable). Binary: `~/.local/bin/grok`. No `--trust` flag; YOLO is `--always-approve`.
 
 ```bash
 #!/usr/bin/env bash
@@ -114,7 +114,7 @@ set -euo pipefail
 
 REPO="${REPO:-$PWD}"
 OUT="${OUT:-$REPO/out/result.md}"
-MODEL="${MODEL:-grok-4.6}"
+MODEL="${MODEL:-grok-4.7}"
 EFFORT="${EFFORT:-medium}"
 mkdir -p "$(dirname "$OUT")"
 
@@ -136,7 +136,105 @@ grok -p "$PROMPT" -m "$MODEL" --effort "$EFFORT" \
 echo "[delegate/grok] done -> $OUT"
 ```
 
-Standard Grok invocation: `grok -p … -m grok-4.6 --effort medium --always-approve --cwd "$REPO" --output-format plain --no-memory`.
+Standard Grok invocation: `grok -p … -m grok-4.7 --effort medium --always-approve --cwd "$REPO" --output-format plain --no-memory`.
+
+## Image generation
+
+Two lanes. Do not mix them, and do not describe a built-in image as Image 2.5.
+
+### Simple visualization and prototypes — built-in Image 2
+
+Use the Codex built-in `image_gen` tool. It runs on the ChatGPT login. It does not need `OPENAI_API_KEY`. The tool hardcodes `gpt-image-2`. Its only arguments are `prompt`, `transparent_background`, `referenced_image_paths`, and `num_last_images_to_include`. There is no model, quality, or size argument.
+
+The ChatGPT images proxy ignores `model`, `quality`, and `size` on `https://chatgpt.com/backend-api/codex/images/generations` (verified 30 Sep 2026: an unknown model id still returned 200, and a `quality=high` / `size=1024x1024` request came back `quality=low`, `1254x1254`). Use this lane for sketches, prototypes, and simple visualization. Do not use it when the deliverable is a production asset.
+
+Codex saves under `$CODEX_HOME/generated_images/<thread-id>/`. Copy the chosen PNG into the workspace before finishing. Do not leave a project-referenced asset only under `$CODEX_HOME`.
+
+```bash
+cat <<'EOF' | ~/.local/bin/codex exec --dangerously-bypass-approvals-and-sandbox \
+  --skip-git-repo-check --ephemeral \
+  -m gpt-6.1-sol -c 'model_reasoning_effort="low"' \
+  -C /path/to/repo -o "$SCRATCH/imagegen-last.txt" -
+Use the built-in image_gen tool exactly once. Do not call the Image API.
+Prompt: <one concrete visual>
+Copy the PNG to: /path/to/repo/output/imagegen/<name>.png
+Report the source path, destination path, and byte size.
+EOF
+```
+
+`-m gpt-6.1-sol` is the agent that calls the tool. It is not the image model. The image model is `gpt-image-2`.
+
+### Production — `gpt-image-2.5-sunburst` with the paid API key
+
+Use this when the image is a final asset. `gpt-image-2.5-sunburst` is selected only by the Image API, with `OPENAI_API_KEY` from the repo `.env` (mode `600`, listed in `.gitignore`). Never print the key, never commit `.env`, and never paste the key into a prompt. The ChatGPT access token cannot call this: `api.openai.com` returns 401 missing scope `api.model.images.request`.
+
+Text-only generation uses `generate`:
+
+```bash
+set -a
+source /path/to/repo/.env
+set +a
+uv run --with openai python ~/.codex/skills/.system/imagegen/scripts/image_gen.py generate \
+  --model gpt-image-2.5-sunburst \
+  --prompt "<prompt>" \
+  --quality high \
+  --size 1024x1024 \
+  --no-augment \
+  --out output/imagegen/<name>.png
+```
+
+Script limits, from `~/.codex/skills/.system/imagegen/scripts/image_gen.py`:
+
+- `--model` must start with `gpt-image-`. Omitting it defaults to `gpt-image-2`, which is the prototype lane, not production.
+- `--quality` is only `low`, `medium`, `high`, or `auto`. The 2.5 API also accepts `xhigh` and `max`; this script rejects them before the request. Do not edit the script to add them.
+- For any model other than the exact string `gpt-image-2`, `--size` is only `1024x1024`, `1536x1024`, `1024x1536`, or `auto`.
+- Do not modify `scripts/image_gen.py`.
+
+Verified 30 Sep 2026, same prompt, `--quality high --size 1024x1024`: Sunburst (28.5s) looked like a photographed surface; `gpt-image-2` via the same API (85.4s) looked smoother and more synthetic. One sample. Use Sunburst for production.
+
+### Attaching reference images
+
+Both lanes accept multiple reference images. `generate` does not take images. If the task has input files, use built-in `referenced_image_paths` or the API `edit` subcommand.
+
+Number every file in the prompt and give it one role: tree silhouette, wood swatch, dirt tile, edit target. Order in the prompt must match the path order. Cap the built-in list at 5. Pass either `referenced_image_paths` or `num_last_images_to_include`, not both.
+
+Built-in prototype. One `image_gen` call. Absolute paths. Do not call the Image API.
+
+```bash
+cat <<'EOF' | ~/.local/bin/codex exec --dangerously-bypass-approvals-and-sandbox \
+  --skip-git-repo-check --ephemeral \
+  -m gpt-6.1-sol -c 'model_reasoning_effort="low"' \
+  -C /path/to/repo -o "$SCRATCH/imagegen-refs.txt" -
+Use the built-in image_gen tool exactly once.
+Pass these files together in referenced_image_paths, in this order:
+1. /abs/tree.png — tree silhouette, leaf color, trunk color
+2. /abs/wood.png — wood material swatch
+3. /abs/dirt.png — repeating ground tile
+Prompt: Pixel-art side view. One tree from image 1, trunk colored like image 2, ground tiled from image 3. Crisp pixels, no text.
+If this is a tileset, require a sheet with one cell per tile and say which reference locks which cell. A scene prompt returns one scene, not a tile grid.
+Copy the PNG to: /path/to/repo/output/imagegen/<name>.png
+EOF
+```
+
+Production. `edit`, repeated `--image`, same order as the prompt. Do not pass `--input-fidelity`. `gpt-image-2` rejects it, and Sunburst should leave it unset.
+
+```bash
+set -a
+source /path/to/repo/.env
+set +a
+uv run --with openai python ~/.codex/skills/.system/imagegen/scripts/image_gen.py edit \
+  --model gpt-image-2.5-sunburst \
+  --image /abs/tree.png \
+  --image /abs/wood.png \
+  --image /abs/dirt.png \
+  --prompt "Image 1 is the tree. Image 2 is the wood color. Image 3 is the repeating dirt tile." \
+  --quality high \
+  --size 1024x1536 \
+  --no-augment \
+  --out output/imagegen/<name>.png
+```
+
+Verified 30 Sep 2026 with `Tree (Forest).png`, `Wood.png`, and `starter-tiles-16px/dirt-xxxx.png`. Built-in `referenced_image_paths` was accepted and wrote a 1024×1536 pixel tree on a dirt row (`pixel-forest-builtin.png`). The same three files through Sunburst `edit` finished in 27.9s (`pixel-forest-sunburst.png`) and stayed closer to the source sprite. Both invented a grass cap that is not in the dirt tile. Neither emitted a 16×16 tile grid, because the prompt asked for a scene.
 
 ## Writing the spec
 
